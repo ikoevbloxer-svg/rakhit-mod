@@ -198,7 +198,7 @@ public final class Justice {
         p.removeEffect(MobEffects.HUNGER);
         p.removeEffect(MobEffects.MOVEMENT_SLOWDOWN);
         p.teleportTo(s.overworld(), e.x, e.y, e.z, 0f, 0f);
-        IMMUNE.put(p.getUUID(), s.getTickCount() + 200);   // 10 секунд "амнистии"
+        IMMUNE.put(p.getUUID(), s.getTickCount() + 200L);   // 10 секунд "амнистии"
         p.sendSystemMessage(Component.literal("Вы отбыли наказание. Слава Королю Рахиту III!").withStyle(ChatFormatting.GOLD));
     }
 }
