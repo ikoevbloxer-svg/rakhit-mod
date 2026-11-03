@@ -1,0 +1,23 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "equipment",
+ "key": {
+  "G": {
+   "item": "minecraft:gold_block"
+  },
+  "N": {
+   "item": "minecraft:nether_star"
+  },
+  "D": {
+   "item": "minecraft:diamond_block"
+  }
+ },
+ "pattern": [
+  "GNG",
+  "GDG"
+ ],
+ "result": {
+  "id": "rakhit:crown",
+  "count": 1
+ }
+}

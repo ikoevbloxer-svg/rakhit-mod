@@ -1,0 +1,11 @@
+{
+ "whip_crack": {
+  "sounds": [
+   {
+    "name": "rakhit:whip_crack",
+    "stream": false
+   }
+  ],
+  "subtitle": "subtitles.rakhit.whip_crack"
+ }
+}

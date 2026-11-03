@@ -1,0 +1,21 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "equipment",
+ "key": {
+  "L": {
+   "item": "minecraft:leather"
+  },
+  "S": {
+   "item": "minecraft:stick"
+  }
+ },
+ "pattern": [
+  "  L",
+  " LL",
+  "S  "
+ ],
+ "result": {
+  "id": "rakhit:whip",
+  "count": 1
+ }
+}

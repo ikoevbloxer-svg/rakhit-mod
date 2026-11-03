@@ -1,0 +1,7 @@
+{
+ "variants": {
+  "": {
+   "model": "rakhit:block/bank_teller"
+  }
+ }
+}
