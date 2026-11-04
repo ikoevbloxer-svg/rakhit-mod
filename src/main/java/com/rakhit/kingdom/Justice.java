@@ -197,7 +197,7 @@ public final class Justice {
                 .append(who.getDisplayName())
                 .append(Component.literal(" казнён по приказу Короля Рахита III!").withStyle(ChatFormatting.RED)), false);
         who.level().playSound(null, who.blockPosition(), SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.MASTER, 2f, 1f);
-        IMMUNE.put(who.getUUID(), s.getTickCount() + 400);
+        IMMUNE.put(who.getUUID(), s.getTickCount() + 400L);
         if (who instanceof KingdomNpc n) {
             ((ServerLevel) n.level()).sendParticles(ParticleTypes.SOUL, n.getX(), n.getY() + 1, n.getZ(), 30, 0.4, 0.8, 0.4, 0.05);
             Citizens.respawnLater(s, n.home.equals(net.minecraft.core.BlockPos.ZERO) ? net.minecraft.core.BlockPos.containing(Kingdom.exit()) : n.home,
