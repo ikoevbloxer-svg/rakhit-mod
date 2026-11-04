@@ -4,6 +4,10 @@ import net.minecraft.Util;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.BlockItem;
@@ -43,7 +47,12 @@ public final class ModItems {
                             .rarity(Rarity.EPIC).fireResistant()));
 
     public static final DeferredItem<WhipItem> WHIP = ITEMS.register("whip",
-            () -> new WhipItem(new Item.Properties().durability(500).rarity(Rarity.UNCOMMON)));
+            () -> new WhipItem(new Item.Properties().durability(500).rarity(Rarity.UNCOMMON)
+                    .attributes(ItemAttributeModifiers.builder()
+                            .add(Attributes.ATTACK_DAMAGE, new AttributeModifier(Item.BASE_ATTACK_DAMAGE_ID, 3.0, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND)
+                            .add(Attributes.ATTACK_SPEED, new AttributeModifier(Item.BASE_ATTACK_SPEED_ID, -2.4, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND)
+                            .add(Attributes.ENTITY_INTERACTION_RANGE, new AttributeModifier(RakhitMod.id("whip_reach"), 3.0, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND)
+                            .build())));
 
     public static final DeferredItem<BlockItem> BANK_TELLER_ITEM = ITEMS.registerSimpleBlockItem(ModBlocks.BANK_TELLER);
 

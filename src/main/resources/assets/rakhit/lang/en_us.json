@@ -1,6 +1,7 @@
 {
  "item.rakhit.crown": "Crown of King Rakhit III",
  "item.rakhit.whip": "Royal Whip",
+ "entity.rakhit.npc": "Subject of the King",
  "block.rakhit.bank_teller": "Royal Bank Teller",
  "subtitles.rakhit.whip_crack": "Whip cracks"
 }

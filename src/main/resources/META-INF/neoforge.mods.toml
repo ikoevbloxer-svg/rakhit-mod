@@ -4,9 +4,9 @@ license = "MIT"
 
 [[mods]]
 modId = "rakhit"
-version = "1.0.0"
+version = "1.1.0"
 displayName = "Kingdom of Rakhit III"
-description = '''Диктатура Короля Рахита III: указы, офицерская карета, тюрьма, банк, корона и хлыст.'''
+description = '''Диктатура Короля Рахита III: гвардия, жители, 89 указов, 6 наказаний, банк, коронация, корона и хлыст.'''
 
 [[dependencies.rakhit]]
 modId = "neoforge"

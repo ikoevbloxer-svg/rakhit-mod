@@ -1,6 +1,7 @@
 {
  "item.rakhit.crown": "Корона Короля Рахита III",
  "item.rakhit.whip": "Королевский хлыст",
+ "entity.rakhit.npc": "Подданный Короля",
  "block.rakhit.bank_teller": "Касса Королевского банка",
  "subtitles.rakhit.whip_crack": "Щёлкает хлыст"
 }

@@ -16,33 +16,67 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 import java.util.function.Predicate;
 
-/** 45 указов + менеджер: новый указ каждые 2 минуты, красивое объявление, проверка нарушений. */
+/** 89 указов + менеджер: новый указ каждые 2 минуты (или по воле Короля), красивое объявление, проверка нарушений. */
 public final class Decrees {
     public enum Kind {
         STATE, JUMP, BREAK_ANY, BREAK_LOG, BREAK_STONE, PLACE, CHAT, EAT, CRAFT, PICKUP, DROP, OPEN_CHEST,
-        SLEEP, KILL_ANIMAL, KILL_MONSTER, DAMAGED, ATTACK, BUCKET, FLINT, TRADE, PEARL
+        SLEEP, KILL_ANIMAL, KILL_MONSTER, DAMAGED, ATTACK, BUCKET, FLINT, TRADE, PEARL,
+        BREAK_DIRT, BREAK_ORE, BREAK_LEAVES, BREAK_PLANT, BREAK_GLASS, SHOOT, THROW, FISH,
+        USE_TABLE, USE_FURNACE, USE_DOOR, USE_BUTTON, SHEAR, FEED, KILL_CREEPER, DRINK, PLACE_TORCH
     }
 
+    /** Как жители королевства подчиняются указу (их ИИ читает правило каждый тик). */
+    public enum CitizenRule { NONE, KEEP_MOVING, STAY_HOME, NO_JUMP, NO_SPRINT, NO_SNEAK }
+
+    /** Чем "мятежный" житель демонстративно нарушает указ перед тем, как его схватит стража. */
+    public enum Act { SHOUT, JUMP, SPRINT, SNEAK }
+
     /** STATE-указы проверяются опросом игроков; остальные срабатывают по событию (см. KingdomEvents). */
-    public record Decree(String text, Kind kind, Predicate<ServerPlayer> test) {}
+    public static final class Decree {
+        public final String text;
+        public final Kind kind;
+        public final Predicate<ServerPlayer> test;
+        public CitizenRule rule = CitizenRule.NONE;
+        public Act act = Act.SHOUT;
+
+        Decree(String text, Kind kind, Predicate<ServerPlayer> test) {
+            this.text = text; this.kind = kind; this.test = test;
+        }
+
+        Decree rule(CitizenRule r) { this.rule = r; return this; }
+        Decree act(Act a) { this.act = a; return this; }
+
+        public String text() { return text; }
+        public Kind kind() { return kind; }
+        public Predicate<ServerPlayer> test() { return test; }
+
+        /** Последняя фраза указа - короткое название запрета (для книги Короля). */
+        public String shortName() {
+            int cut = text.lastIndexOf("! ", text.length() - 2);
+            return cut >= 0 ? text.substring(cut + 2) : text;
+        }
+    }
 
     public static final int INTERVAL = 2 * 60 * 20;   // 2 минуты
     private static final int GRACE = 100;              // 5 сек на ознакомление с STATE-указом
 
     public static final List<Decree> ALL = new ArrayList<>();
 
-    private static void s(String text, Predicate<ServerPlayer> test) { ALL.add(new Decree(text, Kind.STATE, test)); }
-    private static void e(String text, Kind kind) { ALL.add(new Decree(text, kind, null)); }
+    private static Decree s(String text, Predicate<ServerPlayer> test) { Decree d = new Decree(text, Kind.STATE, test); ALL.add(d); return d; }
+    private static Decree e(String text, Kind kind) { Decree d = new Decree(text, kind, null); ALL.add(d); return d; }
 
     private static boolean hold(ServerPlayer p, Item i) { return p.getMainHandItem().is(i) || p.getOffhandItem().is(i); }
 
@@ -50,6 +84,16 @@ public final class Decrees {
         for (ItemStack st : p.getInventory().items) if (!st.isEmpty() && f.test(st)) return true;
         for (ItemStack st : p.getInventory().offhand) if (!st.isEmpty() && f.test(st)) return true;
         return false;
+    }
+
+    private static boolean holdTag(ServerPlayer p, net.minecraft.tags.TagKey<Item> tag) {
+        return p.getMainHandItem().is(tag) || p.getOffhandItem().is(tag);
+    }
+
+    private static int usedSlots(ServerPlayer p) {
+        int n = 0;
+        for (ItemStack st : p.getInventory().items) if (!st.isEmpty()) n++;
+        return n;
     }
 
     private static int invCount(ServerPlayer p, Item item) {
@@ -62,8 +106,8 @@ public final class Decrees {
     static {
         // ---------- указы с опросом состояния ----------
         s("Королевские учёные доказали: вода опасна для здоровья! Купание запрещено!", ServerPlayer::isInWater);
-        s("Бегущий человек - подозрительный человек! Бегать запрещено!", ServerPlayer::isSprinting);
-        s("Король не любит тех, кто крадётся! Приседать запрещено!", ServerPlayer::isShiftKeyDown);
+        s("Бегущий человек - подозрительный человек! Бегать запрещено!", ServerPlayer::isSprinting).rule(CitizenRule.NO_SPRINT).act(Act.SPRINT);
+        s("Король не любит тех, кто крадётся! Приседать запрещено!", ServerPlayer::isShiftKeyDown).rule(CitizenRule.NO_SNEAK).act(Act.SNEAK);
         s("Огонь - привилегия Короны! Гореть без разрешения запрещено!", ServerPlayer::isOnFire);
         s("Небо принадлежит Королю! Парить на элитрах запрещено!", ServerPlayer::isFallFlying);
         s("Верховая езда и лодки - привилегия знати! Простолюдинам ездить запрещено!", ServerPlayer::isPassenger);
@@ -77,10 +121,10 @@ public final class Decrees {
         s("Всё золото принадлежит Короне! Хранить золотые слитки запрещено!", p -> invHas(p, st -> st.is(Items.GOLD_INGOT)));
         s("Земля - собственность Короны! Хранить землю в инвентаре запрещено!", p -> invHas(p, st -> st.is(Items.DIRT)));
         s("Ночью честные подданные спят! Находиться под открытым небом ночью запрещено!",
-                p -> p.level().dimension() == Level.OVERWORLD && p.level().isNight() && p.level().canSeeSky(p.blockPosition()));
-        s("Дождь оскорбляет Корону! Мокнуть под дождём запрещено!", p -> p.level().isRainingAt(p.blockPosition()));
+                p -> p.level().dimension() == Level.OVERWORLD && p.level().isNight() && p.level().canSeeSky(p.blockPosition())).rule(CitizenRule.STAY_HOME);
+        s("Дождь оскорбляет Корону! Мокнуть под дождём запрещено!", p -> p.level().isRainingAt(p.blockPosition())).rule(CitizenRule.STAY_HOME);
         s("В небе живут шпионы! Смотреть вверх запрещено!", p -> p.getXRot() < -60);
-        s("Праздность - враг Короны! Стоять на месте дольше 5 секунд запрещено!", p -> idleSeconds(p) >= 5);
+        s("Праздность - враг Короны! Стоять на месте дольше 5 секунд запрещено!", p -> idleSeconds(p) >= 5).rule(CitizenRule.KEEP_MOVING);
         s("Сытый подданный - ленивый подданный! Иметь полную шкалу голода запрещено!", p -> p.getFoodData().getFoodLevel() >= 20);
         s("Золотые яблоки - только для Короля! Хранить их запрещено!",
                 p -> invHas(p, st -> st.is(Items.GOLDEN_APPLE) || st.is(Items.ENCHANTED_GOLDEN_APPLE)));
@@ -92,8 +136,43 @@ public final class Decrees {
         s("Хлеб - только для богатых! Хранить хлеб запрещено!", p -> invHas(p, st -> st.is(Items.BREAD)));
         s("Алмазы - собственность казны! Носить при себе больше 16 алмазов запрещено!", p -> invCount(p, Items.DIAMOND) > 16);
 
+
+        // ---------- новые указы с опросом состояния ----------
+        s("Кирка - орудие заговорщиков-шахтёров! Держать кирки запрещено!", p -> holdTag(p, ItemTags.PICKAXES));
+        s("Топор - оружие палачей, а палач у нас один! Держать топоры запрещено!", p -> holdTag(p, ItemTags.AXES));
+        s("Лопаты выкапывают государственные тайны! Держать лопаты запрещено!", p -> holdTag(p, ItemTags.SHOVELS));
+        s("Лучники видят слишком далеко! Держать луки и арбалеты запрещено!", p -> hold(p, Items.BOW) || hold(p, Items.CROSSBOW));
+        s("Прятаться за щитом - значит не доверять Королю! Держать щиты запрещено!", p -> hold(p, Items.SHIELD));
+        s("Булыжник годится лишь для мостовой Короны! Хранить булыжник запрещено!", p -> invHas(p, st -> st.is(Items.COBBLESTONE)));
+        s("Железо плавится только в королевских печах! Хранить железные слитки запрещено!", p -> invHas(p, st -> st.is(Items.IRON_INGOT)));
+        s("Единственная валюта - королевская! Хранить изумруды запрещено!", p -> invHas(p, st -> st.is(Items.EMERALD)));
+        s("Динамит - прерогатива Короля! Хранить TNT запрещено!", p -> invHas(p, st -> st.is(Items.TNT)));
+        s("Цветы растут только в королевских садах! Хранить цветы запрещено!", p -> invHas(p, st -> st.is(ItemTags.FLOWERS)));
+        s("Яйца нужны для сцены позора! Хранить яйца запрещено!", p -> invHas(p, st -> st.is(Items.EGG)));
+        s("Свинина - это кощунство! Хранить свинину запрещено!", p -> invHas(p, st -> st.is(Items.PORKCHOP) || st.is(Items.COOKED_PORKCHOP)));
+        s("Подданный обязан быть бодрым! Иметь меньше 5 сердец здоровья запрещено!", p -> p.getHealth() < 10.0f);
+        s("Король не терпит истощённых! Иметь голод ниже 6 делений запрещено!", p -> p.getFoodData().getFoodLevel() <= 6);
+        s("Ад - владения конкурентов! Находиться в Нижнем мире запрещено!", p -> p.level().dimension() == Level.NETHER);
+        s("Трава - пастбище священных свиней! Ходить по траве запрещено!", p -> p.onGround() && p.getBlockStateOn().is(Blocks.GRASS_BLOCK));
+        s("Песок - собственность пустыни! Стоять на песке запрещено!", p -> p.onGround() && p.getBlockStateOn().is(BlockTags.SAND));
+        s("Ползающий подданный подозрителен! Ползать запрещено!", ServerPlayer::isVisuallyCrawling);
+        s("У Короля нет лицензии на лазание! Лазать по лестницам и лозам запрещено!", ServerPlayer::onClimbable);
+        s("Падение - признак слабости! Падать с высоты больше 3 блоков запрещено!", p -> !p.onGround() && p.fallDistance > 3.0f);
+        s("Заговоры шепчутся вдвоём! Стоять ближе 3 блоков к другому подданному запрещено!",
+                p -> !p.level().getEntitiesOfClass(ServerPlayer.class, p.getBoundingBox().inflate(3.0),
+                        o -> o != p && !o.isSpectator()).isEmpty());
+        s("Беглецам не место за стенами! Удаляться от королевства дальше 150 блоков запрещено!",
+                p -> p.level().dimension() == Level.OVERWORLD && Kingdom.distFromCenter(p) > 150);
+        s("Время принадлежит Королю! Хранить часы запрещено!", p -> invHas(p, st -> st.is(Items.CLOCK)));
+        s("Карты и компасы - орудия шпионов! Хранить карты и компасы запрещено!",
+                p -> invHas(p, st -> st.is(Items.MAP) || st.is(Items.FILLED_MAP) || st.is(Items.COMPASS)));
+        s("Питомцы объедают казну! Находиться рядом с прирученными животными запрещено!",
+                p -> !p.level().getEntitiesOfClass(TamableAnimal.class, p.getBoundingBox().inflate(6.0), TamableAnimal::isTame).isEmpty());
+        s("Жадность - порок! Занимать больше 20 слотов инвентаря запрещено!", p -> usedSlots(p) > 20);
+        s("Пустая рука - рука бездельника! Ходить с пустой рукой запрещено!", p -> p.getMainHandItem().isEmpty());
+
         // ---------- указы по событиям ----------
-        e("Прыгать - значит насмехаться над Короной! Прыгать запрещено!", Kind.JUMP);
+        e("Прыгать - значит насмехаться над Короной! Прыгать запрещено!", Kind.JUMP).rule(CitizenRule.NO_JUMP).act(Act.JUMP);
         e("Земля устала! Ломать блоки запрещено!", Kind.BREAK_ANY);
         e("Деревья - верные подданные Короны! Рубить деревья запрещено!", Kind.BREAK_LOG);
         e("Камень - основа трона! Добывать камень запрещено!", Kind.BREAK_STONE);
@@ -113,6 +192,25 @@ public final class Decrees {
         e("Поджигатели будут наказаны! Использовать огниво запрещено!", Kind.FLINT);
         e("Торговля мимо банка запрещена! Торговать с жителями запрещено!", Kind.TRADE);
         e("Телепортация - это побег от правосудия! Бросать жемчуг Края запрещено!", Kind.PEARL);
+
+        // ---------- новые указы по событиям ----------
+        e("Земля и трава - собственность Короны! Копать землю запрещено!", Kind.BREAK_DIRT);
+        e("Руды принадлежат казне! Добывать руду запрещено!", Kind.BREAK_ORE);
+        e("Листва - уши Короля! Ломать листву запрещено!", Kind.BREAK_LEAVES);
+        e("Цветы и злаки радуют Короля! Срывать растения запрещено!", Kind.BREAK_PLANT);
+        e("Стекло хрупко, как терпение Короля! Бить стекло запрещено!", Kind.BREAK_GLASS);
+        e("Стрелы летят в сторону трона! Стрелять из лука запрещено!", Kind.SHOOT);
+        e("Снежки и яйца - только для сцены позора! Бросать их запрещено!", Kind.THROW);
+        e("Вся рыба - королевская! Ловить рыбу запрещено!", Kind.FISH);
+        e("Верстаки и наковальни - государственная тайна! Пользоваться ими запрещено!", Kind.USE_TABLE);
+        e("Печи коптят королевское небо! Пользоваться печами запрещено!", Kind.USE_FURNACE);
+        e("Двери пропускают заговорщиков! Открывать двери и калитки запрещено!", Kind.USE_DOOR);
+        e("Нажимать на кнопки может только Король! Трогать кнопки и рычаги запрещено!", Kind.USE_BUTTON);
+        e("Овцы - наши голые подданные! Стричь овец запрещено!", Kind.SHEAR);
+        e("Королевские животные на диете! Кормить животных запрещено!", Kind.FEED);
+        e("Криперы - любимцы Короля! Убивать криперов запрещено!", Kind.KILL_CREEPER);
+        e("Жидкости пьют с разрешения! Пить зелья и молоко запрещено!", Kind.DRINK);
+        e("Факелы и фонари слепят Короля! Ставить факелы запрещено!", Kind.PLACE_TORCH);
     }
 
     // ---------- состояние ----------
@@ -164,8 +262,12 @@ public final class Decrees {
         if (!Kingdom.ready) return;
         long t = s.getTickCount();
         if (t % 20 == 0) trackIdle(s);
+        if (Throne.audience()) {                       // во время аудиенции у Короля указы стоят
+            if (nextAt != 0) nextAt = Math.max(nextAt, t + 200);
+            return;
+        }
         if (nextAt == 0) nextAt = t + 600;            // первый указ через 30 секунд после старта
-        if (t >= nextAt) issue(s, t);
+        if (t >= nextAt) issue(s, t, -1, null);
         if (current == null) return;
         if (t % 20 == 0) BAR.setProgress(Mth.clamp((float) (nextAt - t) / INTERVAL, 0f, 1f));
         if (current.kind() == Kind.STATE && t - issuedAt >= GRACE && t % 10 == 0) {
@@ -184,14 +286,18 @@ public final class Decrees {
     public static int number() { return number; }
 
     // ---------- выдача и красивое объявление ----------
-    private static void issue(MinecraftServer s, long t) {
-        if (BAG.isEmpty()) {
-            List<Integer> idx = new ArrayList<>();
-            for (int i = 0; i < ALL.size(); i++) idx.add(i);
-            Collections.shuffle(idx);
-            BAG.addAll(idx);
+    private static void issue(MinecraftServer s, long t, int index, String byKing) {
+        if (index >= 0 && index < ALL.size()) {
+            current = ALL.get(index);
+        } else {
+            if (BAG.isEmpty()) {
+                List<Integer> idx = new ArrayList<>();
+                for (int i = 0; i < ALL.size(); i++) idx.add(i);
+                Collections.shuffle(idx);
+                BAG.addAll(idx);
+            }
+            current = ALL.get(BAG.poll());
         }
-        current = ALL.get(BAG.poll());
         number++;
         issuedAt = t;
         nextAt = t + INTERVAL;
@@ -199,19 +305,30 @@ public final class Decrees {
         BAR.setProgress(1f);
         BAR.setName(Component.literal("⚜ УКАЗ №" + number + " ⚜  ").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
                 .append(Component.literal(current.text()).withStyle(ChatFormatting.YELLOW)));
-        announce(s, current, number);
+        announce(s, current, number, byKing);
+        Citizens.onDecree(s, current, number);
     }
 
-    private static void announce(MinecraftServer s, Decree d, int n) {
+    /** Указ по воле Короля из книги: выдаётся сразу, таймер очередного указа начинается заново. */
+    public static void issueByKing(MinecraftServer s, int index, String kingName) {
+        issue(s, s.getTickCount(), index, kingName);
+    }
+
+    public static Decree current() { return current; }
+
+    public static CitizenRule npcRule() { return current == null ? CitizenRule.NONE : current.rule; }
+
+    private static void announce(MinecraftServer s, Decree d, int n, String byKing) {
         Component title = Component.literal("⚜ ВЫСОЧАЙШИЙ УКАЗ №" + n + " ⚜").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
         Component sub = Component.literal(d.text()).withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC);
         Component line = Component.literal("═══════════════════════════════════").withStyle(ChatFormatting.GOLD);
 
         s.getPlayerList().broadcastSystemMessage(line, false);
         s.getPlayerList().broadcastSystemMessage(Component.literal("  ⚜ УКАЗ №" + n + " ⚜ ").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
-                .append(Component.literal("Его Величества Короля Рахита III").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC)), false);
+                .append(Component.literal(byKing == null ? "Его Величества Короля Рахита III"
+                        : "Его Величества Короля " + byKing + " (по велению книги указов)").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC)), false);
         s.getPlayerList().broadcastSystemMessage(Component.literal("  " + d.text()).withStyle(ChatFormatting.WHITE), false);
-        s.getPlayerList().broadcastSystemMessage(Component.literal("  Нарушителей заберёт офицерская карета!").withStyle(ChatFormatting.DARK_RED), false);
+        s.getPlayerList().broadcastSystemMessage(Component.literal("  Нарушителей схватит королевская гвардия и увезёт в карете!").withStyle(ChatFormatting.DARK_RED), false);
         s.getPlayerList().broadcastSystemMessage(line, false);
 
         for (ServerPlayer p : s.getPlayerList().getPlayers()) {
